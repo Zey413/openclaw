@@ -1,5 +1,9 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { AnyMessageContent, makeWASocket } from "@whiskeysockets/baileys";
+import type {
+  AnyMessageContent,
+  MiscMessageGenerationOptions,
+  makeWASocket,
+} from "@whiskeysockets/baileys";
 import type { NormalizedLocation } from "../../channels/location.js";
 import type { ChannelAgentTool } from "../../channels/plugins/types.core.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -7,10 +11,19 @@ import type { PollInput } from "../../polls.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import type { WebChannel } from "../../utils.js";
 
+export type QuotedMessageKey = {
+  id: string;
+  remoteJid: string;
+  fromMe: boolean;
+  participant?: string;
+  body?: string;
+};
+
 export type ActiveWebSendOptions = {
   gifPlayback?: boolean;
   accountId?: string;
   fileName?: string;
+  quotedMessageKey?: QuotedMessageKey;
 };
 
 export type ActiveWebListener = {
@@ -71,8 +84,8 @@ export type WebInboundMessage = {
   fromMe?: boolean;
   location?: NormalizedLocation;
   sendComposing: () => Promise<void>;
-  reply: (text: string) => Promise<void>;
-  sendMedia: (payload: AnyMessageContent) => Promise<void>;
+  reply: (text: string, options?: MiscMessageGenerationOptions) => Promise<void>;
+  sendMedia: (payload: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<void>;
   mediaPath?: string;
   mediaType?: string;
   mediaFileName?: string;
@@ -180,6 +193,7 @@ export type WhatsAppHeavyRuntimeModule = {
       mediaLocalRoots?: readonly string[];
       gifPlayback?: boolean;
       accountId?: string;
+      quotedMessageKey?: QuotedMessageKey;
     },
   ) => Promise<{ messageId: string; toJid: string }>;
   sendPollWhatsApp: (
