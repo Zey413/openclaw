@@ -70,6 +70,7 @@ type ChannelHandler = {
   chunkerMode?: "text" | "markdown";
   textChunkLimit?: number;
   supportsMedia: boolean;
+  consumeReplyToAfterFirstMediaSend: boolean;
   normalizePayload?: (payload: ReplyPayload) => ReplyPayload | null;
   shouldSkipPlainTextSanitization?: (payload: ReplyPayload) => boolean;
   resolveEffectiveTextChunkLimit?: (fallbackLimit?: number) => number | undefined;
@@ -77,6 +78,7 @@ type ChannelHandler = {
     payload: ReplyPayload,
     overrides?: {
       replyToId?: string | null;
+      replyToParticipant?: string | null;
       threadId?: string | number | null;
       audioAsVoice?: boolean;
     },
@@ -85,6 +87,7 @@ type ChannelHandler = {
     text: string,
     overrides?: {
       replyToId?: string | null;
+      replyToParticipant?: string | null;
       threadId?: string | number | null;
       audioAsVoice?: boolean;
     },
@@ -94,6 +97,7 @@ type ChannelHandler = {
     mediaUrl: string,
     overrides?: {
       replyToId?: string | null;
+      replyToParticipant?: string | null;
       threadId?: string | number | null;
       audioAsVoice?: boolean;
     },
@@ -102,6 +106,7 @@ type ChannelHandler = {
     text: string,
     overrides?: {
       replyToId?: string | null;
+      replyToParticipant?: string | null;
       threadId?: string | number | null;
       audioAsVoice?: boolean;
     },
@@ -111,6 +116,7 @@ type ChannelHandler = {
     mediaUrl: string,
     overrides?: {
       replyToId?: string | null;
+      replyToParticipant?: string | null;
       threadId?: string | number | null;
       audioAsVoice?: boolean;
     },
@@ -123,6 +129,7 @@ type ChannelHandlerParams = {
   to: string;
   accountId?: string;
   replyToId?: string | null;
+  replyToParticipant?: string | null;
   threadId?: string | number | null;
   identity?: OutboundIdentity;
   deps?: OutboundSendDeps;
@@ -164,11 +171,13 @@ function createPluginHandler(
   const chunkerMode = outbound.chunkerMode;
   const resolveCtx = (overrides?: {
     replyToId?: string | null;
+    replyToParticipant?: string | null;
     threadId?: string | number | null;
     audioAsVoice?: boolean;
   }): Omit<ChannelOutboundContext, "text" | "mediaUrl"> => ({
     ...baseCtx,
     replyToId: overrides?.replyToId ?? baseCtx.replyToId,
+    replyToParticipant: overrides?.replyToParticipant ?? baseCtx.replyToParticipant,
     threadId: overrides?.threadId ?? baseCtx.threadId,
     audioAsVoice: overrides?.audioAsVoice,
   });
@@ -177,6 +186,11 @@ function createPluginHandler(
     chunkerMode,
     textChunkLimit: outbound.textChunkLimit,
     supportsMedia: Boolean(sendMedia),
+    consumeReplyToAfterFirstMediaSend:
+      outbound.consumeReplyToAfterFirstMediaSend?.({
+        cfg: params.cfg,
+        accountId: params.accountId ?? undefined,
+      }) ?? false,
     normalizePayload: outbound.normalizePayload
       ? (payload) => outbound.normalizePayload!({ payload })
       : undefined,
@@ -244,6 +258,7 @@ function createChannelOutboundContextBase(
     to: params.to,
     accountId: params.accountId,
     replyToId: params.replyToId,
+    replyToParticipant: params.replyToParticipant,
     threadId: params.threadId,
     identity: params.identity,
     gifPlayback: params.gifPlayback,
@@ -264,6 +279,7 @@ type DeliverOutboundPayloadsCoreParams = {
   accountId?: string;
   payloads: ReplyPayload[];
   replyToId?: string | null;
+  replyToParticipant?: string | null;
   threadId?: string | number | null;
   identity?: OutboundIdentity;
   deps?: OutboundSendDeps;
@@ -506,6 +522,7 @@ export async function deliverOutboundPayloads(
         payloads,
         threadId: params.threadId,
         replyToId: params.replyToId,
+        replyToParticipant: params.replyToParticipant,
         bestEffort: params.bestEffort,
         gifPlayback: params.gifPlayback,
         forceDocument: params.forceDocument,
@@ -574,6 +591,7 @@ async function deliverOutboundPayloadsCore(
     deps,
     accountId,
     replyToId: params.replyToId,
+    replyToParticipant: params.replyToParticipant,
     threadId: params.threadId,
     identity: params.identity,
     gifPlayback: params.gifPlayback,
@@ -596,6 +614,7 @@ async function deliverOutboundPayloadsCore(
     text: string,
     overrides?: {
       replyToId?: string | null;
+      replyToParticipant?: string | null;
       threadId?: string | number | null;
       audioAsVoice?: boolean;
     },
@@ -682,6 +701,7 @@ async function deliverOutboundPayloadsCore(
       params.onPayload?.(payloadSummary);
       const sendOverrides = {
         replyToId: effectivePayload.replyToId ?? params.replyToId ?? undefined,
+        replyToParticipant: params.replyToParticipant ?? undefined,
         threadId: params.threadId ?? undefined,
         audioAsVoice: effectivePayload.audioAsVoice === true ? true : undefined,
         forceDocument: params.forceDocument,
@@ -745,24 +765,41 @@ async function deliverOutboundPayloadsCore(
       }
 
       let lastMessageId: string | undefined;
+      let nextReplyToId = sendOverrides.replyToId;
+      let nextReplyToParticipant = sendOverrides.replyToParticipant;
       await sendMediaWithLeadingCaption({
         mediaUrls: payloadSummary.mediaUrls,
         caption: payloadSummary.text,
         send: async ({ mediaUrl, caption }) => {
           throwIfAborted(abortSignal);
+          const mediaOverrides = handler.consumeReplyToAfterFirstMediaSend
+            ? {
+                ...sendOverrides,
+                replyToId: nextReplyToId,
+                replyToParticipant: nextReplyToParticipant,
+              }
+            : sendOverrides;
           if (handler.sendFormattedMedia) {
             const delivery = await handler.sendFormattedMedia(
               caption ?? "",
               mediaUrl,
-              sendOverrides,
+              mediaOverrides,
             );
             results.push(delivery);
             lastMessageId = delivery.messageId;
+            if (handler.consumeReplyToAfterFirstMediaSend && nextReplyToId) {
+              nextReplyToId = undefined;
+              nextReplyToParticipant = undefined;
+            }
             return;
           }
-          const delivery = await handler.sendMedia(caption ?? "", mediaUrl, sendOverrides);
+          const delivery = await handler.sendMedia(caption ?? "", mediaUrl, mediaOverrides);
           results.push(delivery);
           lastMessageId = delivery.messageId;
+          if (handler.consumeReplyToAfterFirstMediaSend && nextReplyToId) {
+            nextReplyToId = undefined;
+            nextReplyToParticipant = undefined;
+          }
         },
       });
       emitMessageSent({

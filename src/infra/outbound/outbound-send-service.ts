@@ -99,6 +99,7 @@ export async function executeSendAction(params: {
   forceDocument?: boolean;
   bestEffort?: boolean;
   replyToId?: string;
+  replyToParticipant?: string;
   threadId?: string | number;
 }): Promise<{
   handledBy: "plugin" | "core";
@@ -143,6 +144,7 @@ export async function executeSendAction(params: {
     channel: params.ctx.channel || undefined,
     accountId: params.ctx.accountId ?? undefined,
     replyToId: params.replyToId,
+    replyToParticipant: params.replyToParticipant,
     threadId: params.threadId,
     gifPlayback: params.gifPlayback,
     forceDocument: params.forceDocument,
