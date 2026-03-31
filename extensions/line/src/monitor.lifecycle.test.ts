@@ -1,7 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
+import { WEBHOOK_IN_FLIGHT_DEFAULTS } from "openclaw/plugin-sdk/webhook-request-guards";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type LineNodeWebhookHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 
 const {
   createLineBotMock,
@@ -13,13 +16,15 @@ const {
     account: { accountId: "default" },
     handleWebhook: vi.fn(),
   })),
-  createLineNodeWebhookHandlerMock: vi.fn(() => vi.fn()),
+  createLineNodeWebhookHandlerMock: vi.fn<() => LineNodeWebhookHandler>(() =>
+    vi.fn<LineNodeWebhookHandler>(async () => {}),
+  ),
   registerPluginHttpRouteMock: vi.fn(),
   unregisterHttpMock: vi.fn(),
 }));
 
 let monitorLineProvider: typeof import("./monitor.js").monitorLineProvider;
-let innerLineWebhookHandlerMock: ReturnType<typeof vi.fn>;
+let innerLineWebhookHandlerMock: ReturnType<typeof vi.fn<LineNodeWebhookHandler>>;
 
 vi.mock("./bot.js", () => ({
   createLineBot: createLineBotMock,
@@ -91,8 +96,10 @@ describe("monitorLineProvider lifecycle", () => {
       account: { accountId: "default" },
       handleWebhook: vi.fn(),
     });
-    innerLineWebhookHandlerMock = vi.fn(async () => {});
-    createLineNodeWebhookHandlerMock.mockReset().mockReturnValue(innerLineWebhookHandlerMock);
+    innerLineWebhookHandlerMock = vi.fn<LineNodeWebhookHandler>(async () => {});
+    createLineNodeWebhookHandlerMock
+      .mockReset()
+      .mockImplementation(() => innerLineWebhookHandlerMock);
     unregisterHttpMock.mockReset();
     registerPluginHttpRouteMock.mockReset().mockReturnValue(unregisterHttpMock);
     ({ monitorLineProvider } = await import("./monitor.js"));
@@ -166,6 +173,7 @@ describe("monitorLineProvider lifecycle", () => {
   });
 
   it("rejects webhook requests above the shared in-flight limit before body handling", async () => {
+    const limit = WEBHOOK_IN_FLIGHT_DEFAULTS.maxInFlightPerKey;
     const releaseRequests: Array<() => void> = [];
     let reachLimit!: () => void;
     const reachedLimit = new Promise<void>((resolve) => {
@@ -174,7 +182,7 @@ describe("monitorLineProvider lifecycle", () => {
 
     innerLineWebhookHandlerMock.mockImplementation(
       async (_req: IncomingMessage, res: ServerResponse) => {
-        if (releaseRequests.length === 7) {
+        if (releaseRequests.length === limit - 1) {
           reachLimit();
         }
         await new Promise<void>((resolve) => {
@@ -202,7 +210,7 @@ describe("monitorLineProvider lifecycle", () => {
         headers: {},
       }) as IncomingMessage;
 
-    const firstEight = Array.from({ length: 8 }, () =>
+    const firstRequests = Array.from({ length: limit }, () =>
       route!.handler(createPostRequest(), createRouteResponse()),
     );
     await reachedLimit;
@@ -210,12 +218,12 @@ describe("monitorLineProvider lifecycle", () => {
     const overflowResponse = createRouteResponse();
     await route!.handler(createPostRequest(), overflowResponse);
 
-    expect(innerLineWebhookHandlerMock).toHaveBeenCalledTimes(8);
+    expect(innerLineWebhookHandlerMock).toHaveBeenCalledTimes(limit);
     expect(overflowResponse.statusCode).toBe(429);
     expect(overflowResponse.end).toHaveBeenCalledWith("Too Many Requests");
 
     releaseRequests.splice(0).forEach((release) => release());
-    await Promise.all(firstEight);
+    await Promise.all(firstRequests);
     monitor.stop();
   });
 
