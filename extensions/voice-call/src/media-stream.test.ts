@@ -345,7 +345,7 @@ describe("MediaStreamHandler security hardening", () => {
     }
   });
 
-  it("rejects oversized pre-start frames before validation runs", async () => {
+  it("rejects oversized pre-start frames at the websocket maxPayload guard before validation runs", async () => {
     const shouldAcceptStreamCalls: Array<{ callId: string; streamSid: string; token?: string }> =
       [];
     const handler = new MediaStreamHandler({

@@ -101,16 +101,6 @@ function normalizeWsMessageData(data: RawData): Buffer {
   return Buffer.from(data);
 }
 
-function getRawDataByteLength(data: RawData): number {
-  if (Buffer.isBuffer(data)) {
-    return data.byteLength;
-  }
-  if (Array.isArray(data)) {
-    return data.reduce((total, chunk) => total + chunk.byteLength, 0);
-  }
-  return data.byteLength;
-}
-
 /**
  * Manages WebSocket connections for Twilio media streams.
  */
@@ -181,11 +171,6 @@ export class MediaStreamHandler {
 
     ws.on("message", async (data: RawData) => {
       try {
-        if (getRawDataByteLength(data) > MAX_INBOUND_MESSAGE_BYTES) {
-          ws.close(1009, "Message too large");
-          return;
-        }
-
         const raw = normalizeWsMessageData(data);
         const message = JSON.parse(raw.toString("utf8")) as TwilioMediaMessage;
 
