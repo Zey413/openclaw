@@ -111,8 +111,8 @@ export function expandEnvVars(
   return input.replace(
     /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
     (_match, braced: string | undefined, unbraced: string | undefined) => {
-      const name = braced ?? unbraced;
-      return name ? (env[name]?.trim() ?? "") : "";
+      const name = (braced ?? unbraced)!;
+      return env[name]?.trim() ?? "";
     },
   );
 }
