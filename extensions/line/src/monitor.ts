@@ -288,7 +288,13 @@ export async function monitorLineProvider(
   });
 
   const normalizedPath = normalizePluginHttpPath(webhookPath, "/line/webhook") ?? "/line/webhook";
-  const lineWebhookHandler = createLineNodeWebhookHandler({ channelSecret: secret, bot, runtime });
+  const createScopedLineWebhookHandler = (onRequestAuthenticated?: () => void) =>
+    createLineNodeWebhookHandler({
+      channelSecret: secret,
+      bot,
+      runtime,
+      onRequestAuthenticated,
+    });
   const unregisterHttp = registerPluginHttpRoute({
     path: normalizedPath,
     auth: "plugin",
@@ -298,14 +304,13 @@ export async function monitorLineProvider(
     log: (msg) => logVerbose(msg),
     handler: async (req, res) => {
       if (req.method !== "POST") {
-        await lineWebhookHandler(req, res);
+        await createScopedLineWebhookHandler()(req, res);
         return;
       }
 
       const requestLifecycle = beginWebhookRequestPipelineOrReject({
         req,
         res,
-        allowMethods: ["POST"],
         inFlightLimiter: lineWebhookInFlightLimiter,
         inFlightKey: `line:${resolvedAccountId}`,
       });
@@ -314,7 +319,7 @@ export async function monitorLineProvider(
       }
 
       try {
-        await lineWebhookHandler(req, res);
+        await createScopedLineWebhookHandler(requestLifecycle.release)(req, res);
       } finally {
         requestLifecycle.release();
       }
