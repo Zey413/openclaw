@@ -131,6 +131,10 @@ describe("unwrapEnvInvocation", () => {
 describe("unwrapKnownDispatchWrapperInvocation", () => {
   test.each([
     {
+      argv: ["arch", "-arm64", "bash", "-lc", "echo hi"],
+      expected: { kind: "unwrapped", wrapper: "arch", argv: ["bash", "-lc", "echo hi"] },
+    },
+    {
       argv: ["env", "--", "bash", "-lc", "echo hi"],
       expected: { kind: "unwrapped", wrapper: "env", argv: ["bash", "-lc", "echo hi"] },
     },
@@ -165,6 +169,10 @@ describe("unwrapKnownDispatchWrapperInvocation", () => {
       expected: { kind: "unwrapped", wrapper: "timeout", argv: ["bash", "-lc", "echo hi"] },
     },
     {
+      argv: ["xcrun", "bash", "-lc", "echo hi"],
+      expected: { kind: "unwrapped", wrapper: "xcrun", argv: ["bash", "-lc", "echo hi"] },
+    },
+    {
       argv: ["script", "-q", "/dev/null"],
       expected: { kind: "blocked", wrapper: "script" },
     },
@@ -175,6 +183,14 @@ describe("unwrapKnownDispatchWrapperInvocation", () => {
     {
       argv: ["timeout", "--bogus", "5s", "bash", "-lc", "echo hi"],
       expected: { kind: "blocked", wrapper: "timeout" },
+    },
+    {
+      argv: ["arch", "-e", "FOO=bar", "bash", "-lc", "echo hi"],
+      expected: { kind: "blocked", wrapper: "arch" },
+    },
+    {
+      argv: ["xcrun", "--sdk", "macosx", "bash", "-lc", "echo hi"],
+      expected: { kind: "blocked", wrapper: "xcrun" },
     },
   ])("unwraps known dispatch wrappers for %j", ({ argv, expected }) => {
     expect(unwrapKnownDispatchWrapperInvocation(argv)).toEqual(expected);
@@ -202,6 +218,11 @@ describe("resolveDispatchWrapperTrustPlan", () => {
 
   test.each([
     {
+      argv: ["arch", "-arm64", "bash", "-lc", "echo hi"],
+      wrapper: "arch",
+      effectiveArgv: ["bash", "-lc", "echo hi"],
+    },
+    {
       argv: ["nice", "-n", "5", "bash", "-lc", "echo hi"],
       wrapper: "nice",
       effectiveArgv: ["bash", "-lc", "echo hi"],
@@ -224,6 +245,11 @@ describe("resolveDispatchWrapperTrustPlan", () => {
     {
       argv: ["timeout", "--signal=TERM", "5s", "bash", "-lc", "echo hi"],
       wrapper: "timeout",
+      effectiveArgv: ["bash", "-lc", "echo hi"],
+    },
+    {
+      argv: ["xcrun", "bash", "-lc", "echo hi"],
+      wrapper: "xcrun",
       effectiveArgv: ["bash", "-lc", "echo hi"],
     },
   ])("keeps transparent wrapper handling in sync for %s", ({ argv, wrapper, effectiveArgv }) => {

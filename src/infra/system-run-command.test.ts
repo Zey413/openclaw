@@ -236,6 +236,26 @@ describe("system run command helpers", () => {
 
   test.each([
     {
+      name: "resolveSystemRunCommand unwraps macOS dispatch wrappers before deriving shell previews",
+      run: () =>
+        resolveSystemRunCommand({
+          command: ["/usr/bin/arch", "-arm64", "/bin/sh", "-lc", "echo hi"],
+        }),
+      expectedShellPayload: "echo hi",
+      expectedCommandText: '/usr/bin/arch -arm64 /bin/sh -lc "echo hi"',
+      expectedPreviewText: "echo hi",
+    },
+    {
+      name: "resolveSystemRunCommand unwraps xcrun before deriving shell previews",
+      run: () =>
+        resolveSystemRunCommand({
+          command: ["/usr/bin/xcrun", "/bin/sh", "-lc", "echo hi"],
+        }),
+      expectedShellPayload: "echo hi",
+      expectedCommandText: '/usr/bin/xcrun /bin/sh -lc "echo hi"',
+      expectedPreviewText: "echo hi",
+    },
+    {
       name: "resolveSystemRunCommandRequest accepts legacy shell payloads but returns canonical command text",
       run: () =>
         resolveSystemRunCommandRequest({
