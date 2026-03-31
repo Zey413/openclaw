@@ -488,6 +488,21 @@ export async function runCronIsolatedAgentTurn(params: {
       params.job.payload.kind === "agentTurn" && Array.isArray(params.job.payload.fallbacks)
         ? params.job.payload.fallbacks
         : undefined;
+    // When the cron payload specifies an explicit model override, use the
+    // payload fallbacks (or an empty array when none are specified) so that
+    // runWithModelFallback does not silently append the agent's configured
+    // primary model as a last-resort fallback candidate.  Without this guard,
+    // a transient failure on the cron-selected model (rate limit, model not
+    // found, etc.) causes the run to fall back to the agent default, making
+    // it appear as though the cron model override was ignored entirely.
+    // See: https://github.com/openclaw/openclaw/issues/58065
+    const hasCronPayloadModelOverride =
+      params.job.payload.kind === "agentTurn" &&
+      typeof params.job.payload.model === "string" &&
+      params.job.payload.model.trim().length > 0;
+    const cronFallbacksOverride = hasCronPayloadModelOverride
+      ? (payloadFallbacks ?? resolveAgentModelFallbacksOverride(params.cfg, agentId) ?? [])
+      : (payloadFallbacks ?? resolveAgentModelFallbacksOverride(params.cfg, agentId));
     let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
       cronSession.sessionEntry.systemPromptReport,
     );
@@ -499,8 +514,7 @@ export async function runCronIsolatedAgentTurn(params: {
         model: liveSelection.model,
         runId: cronSession.sessionEntry.sessionId,
         agentDir,
-        fallbacksOverride:
-          payloadFallbacks ?? resolveAgentModelFallbacksOverride(params.cfg, agentId),
+        fallbacksOverride: cronFallbacksOverride,
         run: async (providerOverride, modelOverride, runOptions) => {
           if (abortSignal?.aborted) {
             throw new Error(abortReason());
