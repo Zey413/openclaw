@@ -2,6 +2,7 @@ import type { Dispatcher } from "undici";
 import { logWarn } from "../../logger.js";
 import { buildTimeoutAbortSignal } from "../../utils/fetch-timeout.js";
 import { hasProxyEnvConfigured } from "./proxy-env.js";
+import { retainSafeHeadersForCrossOriginRedirect as retainSafeRedirectHeaders } from "./redirect-headers.js";
 import {
   closeDispatcher,
   createPinnedDispatcher,
@@ -55,21 +56,6 @@ type GuardedFetchPresetOptions = Omit<
 >;
 
 const DEFAULT_MAX_REDIRECTS = 3;
-const CROSS_ORIGIN_REDIRECT_SAFE_HEADERS = new Set([
-  "accept",
-  "accept-encoding",
-  "accept-language",
-  "cache-control",
-  "content-language",
-  "content-type",
-  "if-match",
-  "if-modified-since",
-  "if-none-match",
-  "if-unmodified-since",
-  "pragma",
-  "range",
-  "user-agent",
-]);
 
 export function withStrictGuardedFetchMode(params: GuardedFetchPresetOptions): GuardedFetchOptions {
   return { ...params, mode: GUARDED_FETCH_MODE.STRICT };
@@ -131,10 +117,7 @@ function retainSafeHeadersForCrossOriginRedirect(init?: RequestInit): RequestIni
   if (!init?.headers) {
     return init;
   }
-  return {
-    ...init,
-    headers: retainSafeHeadersForCrossOriginRedirectHeaders(init.headers),
-  };
+  return { ...init, headers: retainSafeRedirectHeaders(init.headers) };
 }
 
 export async function fetchWithSsrFGuard(params: GuardedFetchOptions): Promise<GuardedFetchResult> {
