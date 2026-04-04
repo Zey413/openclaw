@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearFastTestEnv,
   loadRunCronIsolatedAgentTurn,
@@ -164,10 +164,40 @@ describe("runCronIsolatedAgentTurn — cron model override forwarding (#58065)",
 
     await runCronIsolatedAgentTurn(makeParams());
 
-    // With the fix, fallbacksOverride should be an explicit empty array
-    // (not undefined), which prevents the agent primary from being appended
-    // as a silent fallback.
+    // With the fix, the shared override helper resolves an explicit empty
+    // list here: no configured fallback chain, and no silent agent-primary
+    // append on retry.
     expect(capturedFallbacksOverride).toEqual([]);
+  });
+
+  it("preserves default fallback chain for cron payload model overrides", async () => {
+    resolveAgentModelFallbacksOverrideMock.mockReturnValue(undefined);
+
+    let capturedFallbacksOverride: string[] | undefined;
+    runWithModelFallbackMock.mockImplementation(
+      async (params: { provider: string; model: string; fallbacksOverride?: string[] }) => {
+        capturedFallbacksOverride = params.fallbacksOverride;
+        return makeSuccessfulRunResult();
+      },
+    );
+
+    await runCronIsolatedAgentTurn(
+      makeParams({
+        cfg: {
+          agents: {
+            defaults: {
+              model: {
+                provider: "anthropic",
+                model: "claude-opus-4-6",
+                fallbacks: ["openai/gpt-5.4", "google/gemini-2.5-pro"],
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(capturedFallbacksOverride).toEqual(["openai/gpt-5.4", "google/gemini-2.5-pro"]);
   });
 
   it("preserves agent fallbacks when no cron payload model is set", async () => {

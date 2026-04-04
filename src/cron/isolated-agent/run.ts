@@ -37,7 +37,7 @@ import {
   registerAgentRunContext,
   resolveAgentConfig,
   resolveAgentDir,
-  resolveAgentModelFallbacksOverride,
+  resolveEffectiveModelFallbacks,
   resolveAgentTimeoutMs,
   resolveAgentWorkspaceDir,
   resolveBootstrapWarningSignaturesSeen,
@@ -488,21 +488,21 @@ export async function runCronIsolatedAgentTurn(params: {
       params.job.payload.kind === "agentTurn" && Array.isArray(params.job.payload.fallbacks)
         ? params.job.payload.fallbacks
         : undefined;
-    // When the cron payload specifies an explicit model override, use the
-    // payload fallbacks (or an empty array when none are specified) so that
-    // runWithModelFallback does not silently append the agent's configured
-    // primary model as a last-resort fallback candidate.  Without this guard,
-    // a transient failure on the cron-selected model (rate limit, model not
-    // found, etc.) causes the run to fall back to the agent default, making
-    // it appear as though the cron model override was ignored entirely.
+    // Keep cron fallback semantics aligned with the shared agent path:
+    // explicit model overrides inherit configured fallback chains, but they
+    // must not silently append the agent primary as a last-resort candidate.
     // See: https://github.com/openclaw/openclaw/issues/58065
     const hasCronPayloadModelOverride =
       params.job.payload.kind === "agentTurn" &&
       typeof params.job.payload.model === "string" &&
       params.job.payload.model.trim().length > 0;
-    const cronFallbacksOverride = hasCronPayloadModelOverride
-      ? (payloadFallbacks ?? resolveAgentModelFallbacksOverride(params.cfg, agentId) ?? [])
-      : (payloadFallbacks ?? resolveAgentModelFallbacksOverride(params.cfg, agentId));
+    const cronFallbacksOverride =
+      payloadFallbacks ??
+      resolveEffectiveModelFallbacks({
+        cfg: params.cfg,
+        agentId,
+        hasSessionModelOverride: hasCronPayloadModelOverride,
+      });
     let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
       cronSession.sessionEntry.systemPromptReport,
     );
